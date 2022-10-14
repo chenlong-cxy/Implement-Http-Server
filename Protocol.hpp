@@ -5,14 +5,22 @@
 #include <vector>
 #include <unordered_map>
 #include <sstream>
+#include <algorithm>
 #include <cstdlib>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include "Util.hpp"
 #include "Log.hpp"
 
 #define SEP ": "
+#define WEB_ROOT "wwwroot"
+#define HOME_PAGE "index.html"
+//#define DEBUG 1
+
+#define OK 200
+#define NOT_FOUND 404
 
 class HttpRequest{
     public:
@@ -28,9 +36,13 @@ class HttpRequest{
 
         std::unordered_map<std::string, std::string> _header_kv; //请求报头中的键值对
         int _content_length; //正文长度
+        std::string _path; //请求资源的路径
+        std::string _query_string; //uri中携带的参数
+        bool _cgi; //是否需要使用CGI模式
     public:
         HttpRequest()
             :_content_length(0)
+            ,_cgi(false)
         {}
         ~HttpRequest()
         {}
@@ -42,6 +54,14 @@ class HttpResponse{
         std::vector<std::string> _response_header; //响应报头
         std::string _blank; //空行
         std::string _response_body; //响应正文
+
+        int _status_code; //状态码
+    public:
+        HttpResponse()
+            :_status_code(OK)
+        {}
+        ~HttpResponse()
+        {}
 };
 
 //读取请求、分析请求、构建响应
@@ -82,6 +102,8 @@ class EndPoint{
             auto& line = _http_request._request_line;
             std::stringstream ss(line);
             ss>>_http_request._method>>_http_request._uri>>_http_request._version;
+            auto& method = _http_request._method;
+            std::transform(method.begin(), method.end(), method.begin(), toupper);
 
             LOG(INFO, _http_request._method);
             LOG(INFO, _http_request._uri);
@@ -139,6 +161,11 @@ class EndPoint{
                 std::cout<<"debug: "<<body<<std::endl;
             }
         }
+        //非CGI处理
+        int ProcessNonCgi()
+        {
+            return 0;
+        }
     public:
         EndPoint(int sock)
             :_sock(sock)
@@ -154,7 +181,67 @@ class EndPoint{
         }
         //构建响应
         void BuildHttpResponse()
-        {}
+        {
+            auto& code = _http_response._status_code;
+            std::string path;
+            struct stat st;
+            if(_http_request._method != "GET"&&_http_request._method != "POST"){
+                //非法请求
+                LOG(WARNING, "method is not right");
+                code = NOT_FOUND;
+                goto END;
+            }
+            if(_http_request._method == "GET"){
+                size_t pos = _http_request._uri.find('?');
+                if(pos != std::string::npos){
+                    Util::CutString(_http_request._uri, _http_request._path, _http_request._query_string, "?");
+                    _http_request._cgi = true; //上传了参数，需要使用CGI模式
+                }
+                else{
+                    _http_request._path = _http_request._uri;
+                }
+            }
+            else if(_http_request._method == "POST"){
+                _http_request._cgi = true; //上传了参数，需要使用CGI模式
+            }
+            else{
+                //Do Nothing
+            }
+            path = _http_request._path;
+            _http_request._path = WEB_ROOT;
+            _http_request._path += path;
+
+            if(_http_request._path[_http_request._path.size() - 1] == '/'){
+                _http_request._path += HOME_PAGE;
+            }
+            
+            if(stat(_http_request._path.c_str(), &st) == 0){
+                //资源存在
+                if(S_ISDIR(st.st_mode)){ //是一个目录，并且不会以/结尾，因为前面已经处理过了
+                    _http_request._path += "/";
+                    _http_request._path += HOME_PAGE;
+                }
+                else if(st.st_mode&S_IXUSR||st.st_mode&S_IXGRP||st.st_mode&S_IXOTH){ //是一个可执行程序，需要特殊处理
+                    _http_request._cgi = true; //请求的是一个可执行程序，需要使用CGI模式
+                }
+            }
+            else{
+                //资源不存在
+                LOG(WARNING, _http_request._path + " NOT_FOUND");
+                code = NOT_FOUND;
+                goto END;
+            }
+
+            if(_http_request._cgi == true){
+                //ProcessCgi(); //以CGI的方式进行处理
+            }
+            else{
+                ProcessNonCgi(); //简单的网页返回，返回静态网页
+            }
+
+END:
+            return;
+        }
         //发送响应
         void SendHttpResponse()
         {}
