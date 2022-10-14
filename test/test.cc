@@ -1,14 +1,24 @@
 #include <iostream>
-#include <algorithm>
-#include <string>
 
 int main()
 {
-    std::string method = "Get";
-    std::transform(method.begin(), method.end(), method.begin(), toupper);
-    std::cout<<"method: "<<method<<std::endl;
+    std::cout<<"begin"<<std::endl;
+    std::cout<<"\r"<<std::endl;
+    std::cout<<"end"<<std::endl;
     return 0;
 }
+
+//#include <iostream>
+//#include <algorithm>
+//#include <string>
+//
+//int main()
+//{
+//    std::string method = "Get";
+//    std::transform(method.begin(), method.end(), method.begin(), toupper);
+//    std::cout<<"method: "<<method<<std::endl;
+//    return 0;
+//}
 
 //#include <iostream>
 //#include <string>

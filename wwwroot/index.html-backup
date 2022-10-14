@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+    <body>
+        <form>
+            First name:<br>
+            <input type="text" name="firstname">
+            <br>
+            Last name:<br>
+            <input type="text" name="lastname">
+        </form>
+        <form>
+            <input type="radio" name="sex" value="male" checked>Male
+            <br>
+            <input type="radio" name="sex" value="female">Female
+        </form>
+        <p>请注意表单本身是不可见的。</p>
+        <p>同时请注意文本字段的默认宽度是 20 个字符。</p>
+    </body>
+</html>
+

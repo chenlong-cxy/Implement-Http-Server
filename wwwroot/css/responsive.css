@@ -1,0 +1,83 @@
+/*--------------------------------------------------------------------- 
+File Name: responsive.css 
+---------------------------------------------------------------------*/
+
+@media (min-width: 1343px) and (max-width: 1500px) {
+
+}
+
+
+@media (min-width: 1200px) and (max-width: 1342px) {
+    header {
+        position: inherit;
+    }
+    .banner_main .bluid h1 {
+    font-size: 67px;
+    line-height: 72px;
+   }
+  
+}
+
+@media (min-width: 992px) and (max-width: 1199px) {
+   header {
+        position: inherit;
+    }
+    .banner_main .bluid h1 {
+    font-size: 67px;
+    line-height: 72px;
+   }
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  header {
+        position: inherit;
+    }
+    .head-bottom {padding: 16px 0;}
+    ul.login_deteil li {padding-right: 24px;}
+    .banner_main .bluid h1 {
+    font-size: 67px;
+    line-height: 72px;
+   }
+}
+
+@media (min-width: 576px) and (max-width: 767px) {
+    .d_none {display: none;}
+   header { position: inherit;}
+    .head-bottom {padding: 16px 0;}
+    ul.login_deteil li {padding-right: 24px;}
+    .banner_main .bluid h1 {
+    font-size: 50px;
+    line-height: 60px;
+}  
+.banner_main .bluid p {padding: 0 30px;}
+    .test_box {padding: 0 30px;}
+    .copyright p {text-align: center;}
+    ul.priva { text-align: center;}
+    .section::after {position: inherit; background: inherit; }
+.section::before {position: inherit; background: inherit; }
+}
+
+@media (max-width: 575px) {
+      .d_none {display: none;}
+      ul.email {margin-top: -33px;  }
+   header { position: inherit;}
+    .head-bottom {padding: 16px 0;}
+    ul.login_deteil li {padding-right: 24px;}
+    .banner_main .bluid h1 {
+    font-size: 50px;
+    line-height: 60px;
+}  .section::after {position: inherit; background: inherit; }
+.section::before {position: inherit; background: inherit; }
+.banner_main .bluid p {padding: 0 30px;}
+    .test_box {padding: 0 30px;}
+    .copyright p {text-align: center;}
+    ul.priva { text-align: center;}
+    .titlepage h2 {font-size: 32px;
+     line-height: 40px;
+    }
+    ul.conta {display: inherit;}
+    ul.conta li {
+        padding-bottom: 10px;
+    }
+}
+
