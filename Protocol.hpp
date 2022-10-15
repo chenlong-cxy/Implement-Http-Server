@@ -135,7 +135,7 @@ class EndPoint{
                 }
                 line.resize(line.size() - 1);
                 _http_request._request_header.push_back(line);
-                LOG(INFO, line);
+                //LOG(INFO, line);
             }
         }
         //解析请求行
@@ -194,7 +194,6 @@ class EndPoint{
                         break;
                     }
                 }
-                std::cout<<"debug: "<<body<<std::endl;
             }
         }
         //非CGI处理
@@ -232,6 +231,7 @@ class EndPoint{
             //父进程的数据
             auto& query_string = _http_request._query_string; //GET
             auto& request_body = _http_request._request_body; //POST
+            int content_length = _http_request._content_length;
 
             //站在父进程角度
             int input[2];
@@ -250,6 +250,27 @@ class EndPoint{
                 close(input[0]);
                 close(output[1]);
 
+                //将请求方法通过环境变量传参
+                std::string method_env = "METHOD=";
+                method_env += method;
+                putenv((char*)method_env.c_str());
+
+                if(method == "GET"){ //通过环境变量传参
+                    std::string query_env = "QUERY_STRING=";
+                    query_env += query_string;
+                    putenv((char*)query_env.c_str());
+                    LOG(INFO, "GET Method, Add Query_String env");
+                }
+                else if(method == "POST"){ //导入正文参数长度
+                    std::string content_length_env = "CONTENT_LENGTH=";
+                    content_length_env += std::to_string(content_length);
+                    putenv((char*)content_length_env.c_str());
+                    LOG(INFO, "POST Method, Add Content_Length env");
+                }
+                else{
+                    //Do Nothing
+                }
+
                 dup2(output[0], 0);
                 dup2(input[1], 1);
 
@@ -267,7 +288,7 @@ class EndPoint{
                     const char* start = request_body.c_str();
                     int total = 0;
                     int size = 0;
-                    while((size = write(output[1], start + total, request_body.size() - total)) > 0){
+                    while(total < content_length && (size = write(output[1], start + total, request_body.size() - total)) > 0){
                         total += size;
                     }
                 }
@@ -319,6 +340,7 @@ class EndPoint{
                 }
             }
             else if(_http_request._method == "POST"){
+                _http_request._path = _http_request._uri;
                 _http_request._cgi = true; //上传了参数，需要使用CGI模式
             }
             else{

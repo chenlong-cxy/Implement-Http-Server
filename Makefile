@@ -1,11 +1,27 @@
 bin=httpserver
+cgi=test_cgi
 cc=g++
 LD_FLAGS=-std=c++11 -lpthread
+curr=$(shell pwd)
 src=main.cc
+
+ALL:$(bin) $(cgi)
+.PHONY:ALL
 
 $(bin):$(src)
 	$(cc) -o $@ $^ $(LD_FLAGS)
 
+$(cgi):cgi/test_cgi.cc
+	$(cc) -o $@ $^ -std=c++11
+
 .PHONY:clean
 clean:
-	rm $(bin)
+	rm -f $(bin) $(cgi)
+	rm -rf output
+
+.PHONY:output
+output:
+	mkdir -p output
+	cp $(bin) output
+	cp -rf wwwroot output
+	cp $(cgi) output/wwwroot
