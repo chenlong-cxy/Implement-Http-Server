@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sendfile.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include "Util.hpp"
 #include "Log.hpp"
@@ -40,6 +41,21 @@ static std::string CodeToDesc(int code)
             break;
     }
     return desc;
+}
+static std::string SuffixToDesc(const std::string& suffix)
+{
+    static std::unordered_map<std::string, std::string> suffix_to_desc = {
+        {".html", "text/html"},
+        {".css", "text/css"},
+        {".js", "application/x-javascript"},
+        {".jpg", "application/x-jpg"},
+        {".xml", "text/xml"}
+    };
+    auto iter = suffix_to_desc.find(suffix);
+    if(iter != suffix_to_desc.end()){
+        return iter->second;
+    }
+    return "text/html";
 }
 
 class HttpRequest{
@@ -78,6 +94,7 @@ class HttpResponse{
         int _status_code; //状态码
         int _fd; //响应的文件
         int _size; //响应文件的大小
+        std::string _suffix; //响应文件的后缀
     public:
         HttpResponse()
             :_blank(LINE_END)
@@ -140,8 +157,6 @@ class EndPoint{
                 {
                     _http_request._header_kv.insert({key, value});
                 }
-                //std::cout<<"debug: "<<key<<std::endl;
-                //std::cout<<"debug: "<<value<<std::endl;
             }
         }
         //判定是否需要读取请求正文
@@ -195,9 +210,77 @@ class EndPoint{
                 _http_response._status_line += " ";
                 _http_response._status_line += CodeToDesc(_http_response._status_code);
                 _http_response._status_line += LINE_END;
+                //构建响应报头
+                std::string content_type = "Content-Type: ";
+                content_type += SuffixToDesc(_http_response._suffix);
+                content_type += LINE_END;
+                _http_response._response_header.push_back(content_type);
+
+                std::string content_length = "Content-Length: ";
+                content_length += std::to_string(_http_response._size);
+                content_length += LINE_END;
+                _http_response._response_header.push_back(content_length);
                 return OK;
             }
             return 404;
+        }
+        //CGI处理
+        int ProcessCgi()
+        {
+            auto& bin = _http_request._path; //要让子进程执行的目标程序
+            auto& method = _http_request._method;
+            //父进程的数据
+            auto& query_string = _http_request._query_string; //GET
+            auto& request_body = _http_request._request_body; //POST
+
+            //站在父进程角度
+            int input[2];
+            int output[2];
+            if(pipe(input) < 0){
+                LOG(ERROR, "pipe input error!");
+                return 404;
+            }
+            if(pipe(output) < 0){
+                LOG(ERROR, "pipe output error!");
+                return 404;
+            }
+
+            pid_t pid = fork();
+            if(pid == 0){ //child
+                close(input[0]);
+                close(output[1]);
+
+                dup2(output[0], 0);
+                dup2(input[1], 1);
+
+                execl(bin.c_str(), bin.c_str(), nullptr);
+                exit(1);
+            }
+            else if(pid < 0){
+                LOG(ERROR, "fork error!");
+                return 404;
+            }
+            else{ //father
+                close(input[1]);
+                close(output[0]);
+                if(method == "POST"){ //将数据写入到管道当中
+                    const char* start = request_body.c_str();
+                    int total = 0;
+                    int size = 0;
+                    while((size = write(output[1], start + total, request_body.size() - total)) > 0){
+                        total += size;
+                    }
+                }
+                //std::string test_string = "2021dragon";
+                //send(output[1], test_string.c_str(), test_string.size(), 0);
+
+                waitpid(pid, nullptr, 0);
+
+                //释放文件描述符
+                close(input[0]);
+                close(output[1]);
+            }
+            return OK;
         }
     public:
         EndPoint(int sock)
@@ -218,6 +301,7 @@ class EndPoint{
             auto& code = _http_response._status_code;
             std::string path;
             struct stat st;
+            size_t pos = 0;
             if(_http_request._method != "GET"&&_http_request._method != "POST"){
                 //非法请求
                 LOG(WARNING, "method is not right");
@@ -267,8 +351,16 @@ class EndPoint{
                 goto END;
             }
 
+            pos = _http_request._path.rfind('.');
+            if(pos == std::string::npos){
+                _http_response._suffix = ".html"; //默认设置
+            }
+            else{
+                _http_response._suffix = _http_request._path.substr(pos);
+            }
+
             if(_http_request._cgi == true){
-                //ProcessCgi(); //以CGI的方式进行处理
+                code = ProcessCgi(); //以CGI的方式进行处理
             }
             else{
                 code = ProcessNonCgi(); //简单的网页返回，返回静态网页
