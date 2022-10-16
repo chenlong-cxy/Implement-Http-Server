@@ -22,12 +22,15 @@
 #define HOME_PAGE "index.html"
 #define HTTP_VERSION "HTTP/1.0"
 #define LINE_END "\r\n"
+#define PAGE_400 "400.html"
 #define PAGE_404 "404.html"
 #define PAGE_500 "500.html"
 //#define DEBUG 1
 
 #define OK 200
+#define BAD_REQUEST 400
 #define NOT_FOUND 404
+#define SERVER_ERROR 500
 
 static std::string CodeToDesc(int code)
 {
@@ -115,22 +118,31 @@ class EndPoint{
         int _sock;
         HttpRequest _http_request;
         HttpResponse _http_response;
+        bool _stop;
     private:
         //读取请求行
-        void RecvHttpRequestLine()
+        bool RecvHttpRequestLine()
         {
             auto& line = _http_request._request_line;
-            Util::ReadLine(_sock, line);
-            line.resize(line.size() - 1);
-            LOG(INFO, line);
+            if(Util::ReadLine(_sock, line) > 0){
+                line.resize(line.size() - 1);
+                LOG(INFO, line);
+            }
+            else{
+                _stop = true; //读取出错，不予处理
+            }
+            return _stop;
         }
         //读取请求报头和空行
-        void RecvHttpRequestHeader()
+        bool RecvHttpRequestHeader()
         {
             std::string line;
             while(true){
                 line.clear(); //每次读取之前清空line
-                Util::ReadLine(_sock, line);
+                if(Util::ReadLine(_sock, line) <= 0){
+                    _stop = true;
+                    break;
+                }
                 if(line == "\n"){
                     _http_request._blank = line;
                     break;
@@ -139,6 +151,7 @@ class EndPoint{
                 _http_request._request_header.push_back(line);
                 //LOG(INFO, line);
             }
+            return _stop;
         }
         //解析请求行
         void ParseHttpRequestLine()
@@ -176,7 +189,7 @@ class EndPoint{
             return false;
         }
         //读取请求正文
-        void RecvHttpRequestBody()
+        bool RecvHttpRequestBody()
         {
             if(IsNeedRecvHttpRequestBody()){
                 int content_length = _http_request._content_length;
@@ -189,14 +202,13 @@ class EndPoint{
                         body.push_back(ch);
                         content_length--;
                     }
-                    else if(size == 0){
-                        break;
-                    }
                     else{
+                        _stop = true;
                         break;
                     }
                 }
             }
+            return _stop;
         }
         //CGI处理
         int ProcessCgi()
@@ -216,12 +228,12 @@ class EndPoint{
             int output[2];
             if(pipe(input) < 0){
                 LOG(ERROR, "pipe input error!");
-                code = 404;
+                code = SERVER_ERROR;
                 return code;
             }
             if(pipe(output) < 0){
                 LOG(ERROR, "pipe output error!");
-                code = 404;
+                code = SERVER_ERROR;
                 return code;
             }
 
@@ -259,7 +271,7 @@ class EndPoint{
             }
             else if(pid < 0){
                 LOG(ERROR, "fork error!");
-                code = 404;
+                code = SERVER_ERROR;
                 return code;
             }
             else{ //father
@@ -289,11 +301,11 @@ class EndPoint{
                             code = OK;
                         }
                         else{
-                            code = 404;
+                            code = BAD_REQUEST;
                         }
                     }
                     else{
-                        code = 404;
+                        code = SERVER_ERROR;
                     }
                 }
 
@@ -311,7 +323,7 @@ class EndPoint{
             if(_http_response._fd >= 0){ //打开文件成功再构建
                 return OK;
             }
-            return 404;
+            return NOT_FOUND;
         }
         void BuildOkResponse()
         {
@@ -369,14 +381,18 @@ class EndPoint{
             std::string path = WEB_ROOT;
             path += "/";
             switch(code){
-                case 200:
+                case OK:
                     BuildOkResponse();
                     break;
-                case 404:
+                case NOT_FOUND:
                     path += PAGE_404;
                     HandlerError(path);
                     break;
-                case 500:
+                case BAD_REQUEST:
+                    path += PAGE_400;
+                    HandlerError(path);
+                    break;
+                case SERVER_ERROR:
                     path += PAGE_500;
                     HandlerError(path);
                     break;
@@ -387,15 +403,20 @@ class EndPoint{
     public:
         EndPoint(int sock)
             :_sock(sock)
+            ,_stop(false)
         {}
+        bool IsStop()
+        {
+            return _stop;
+        }
         //读取请求
         void RecvHttpRequest()
         {
-            RecvHttpRequestLine();
-            RecvHttpRequestHeader();
-            ParseHttpRequestLine();
-            ParseHttpRequestHeader();
-            RecvHttpRequestBody();
+            if(!RecvHttpRequestLine()&&!RecvHttpRequestHeader()){ //短路求值
+                ParseHttpRequestLine();
+                ParseHttpRequestHeader();
+                RecvHttpRequestBody();
+            }
         }
         //构建响应
         void BuildHttpResponse()
@@ -408,7 +429,7 @@ class EndPoint{
             if(_http_request._method != "GET"&&_http_request._method != "POST"){
                 //非法请求
                 LOG(WARNING, "method is not right");
-                code = NOT_FOUND;
+                code = BAD_REQUEST;
                 goto END;
             }
             if(_http_request._method == "GET"){
@@ -522,8 +543,14 @@ class Entrance{
 #else
             EndPoint* ep = new EndPoint(sock);
             ep->RecvHttpRequest();
-            ep->BuildHttpResponse();
-            ep->SendHttpResponse();
+            if(!ep->IsStop()){
+                LOG(INFO, "Recv No Error, Begin Build And Send");
+                ep->BuildHttpResponse();
+                ep->SendHttpResponse();
+            }
+            else{
+                LOG(WARNING, "Recv Error, Stop Build And Send");
+            }
 
             close(sock);
             delete ep;

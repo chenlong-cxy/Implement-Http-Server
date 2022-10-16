@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <signal.h>
 #include "TcpServer.hpp"
 #include "Protocol.hpp"
 #include "Log.hpp"
@@ -20,6 +21,7 @@ class HttpServer{
         {}
         void InitServer()
         {
+            signal(SIGPIPE, SIG_IGN); //忽略SIGPIPE信号，防止写入时崩溃
             _tcp_server = TcpServer::GetInstance(_port);
         }
         void Loop()
