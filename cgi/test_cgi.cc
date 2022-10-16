@@ -3,29 +3,63 @@
 #include <cstdlib>
 #include <unistd.h>
 
-int main()
+bool GetQueryString(std::string& query_string)
 {
+    bool result = false;
     std::string method = getenv("METHOD");
-    std::cerr<<"debug METHOD: "<<method<<std::endl;
-    std::string query_string;
+    //std::cerr<<"debug METHOD: "<<method<<std::endl;
     if(method == "GET"){
         query_string = getenv("QUERY_STRING");
-        std::cerr<<"GET debug QUERY_STRING: "<<query_string<<std::endl;
+        //std::cerr<<"GET debug QUERY_STRING: "<<query_string<<std::endl;
+        result = true;
     }
     else if(method == "POST"){
         int content_length = atoi(getenv("CONTENT_LENGTH"));
-        std::cerr<<"debug CONTENT_LENGTH: "<<content_length<<std::endl;
+        //std::cerr<<"debug CONTENT_LENGTH: "<<content_length<<std::endl;
         char ch = 0;
         while(content_length){
             read(0, &ch, 1);
             query_string += ch;
             content_length--;
         }
-        std::cerr<<"POST debug QUERY_STRING: "<<query_string<<std::endl;
+        //std::cerr<<"POST debug QUERY_STRING: "<<query_string<<std::endl;
+        result = true;
     }
     else{
         //Do Nothing
+        result = false;
     }
+    return result;
+}
+void CutString(std::string& in, const std::string& sep, std::string& out1, std::string& out2)
+{
+    size_t pos = in.find(sep);
+    if(pos != std::string::npos){
+        out1 = in.substr(0, pos);
+        out2 = in.substr(pos + sep.size());
+    }
+}
+int main()
+{
+    std::string query_string;
+    GetQueryString(query_string);
+
+    std::string str1;
+    std::string str2;
+    CutString(query_string, "&", str1, str2);
+
+    std::string name1;
+    std::string value1;
+    CutString(str1, "=", name1, value1);
+    std::string name2;
+    std::string value2;
+    CutString(str2, "=", name2, value2);
+
+    std::cerr<<name1<<":"<<value1<<std::endl;
+    std::cerr<<name2<<":"<<value2<<std::endl;
+
+    std::cout<<name1<<":"<<value1<<std::endl;
+    std::cout<<name2<<":"<<value2<<std::endl;
 
     return 0;
 }

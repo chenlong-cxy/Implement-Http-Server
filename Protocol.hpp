@@ -22,6 +22,8 @@
 #define HOME_PAGE "index.html"
 #define HTTP_VERSION "HTTP/1.0"
 #define LINE_END "\r\n"
+#define PAGE_404 "404.html"
+#define PAGE_500 "500.html"
 //#define DEBUG 1
 
 #define OK 200
@@ -196,53 +198,31 @@ class EndPoint{
                 }
             }
         }
-        //非CGI处理
-        int ProcessNonCgi()
-        {
-            //打开待发送的文件
-            _http_response._fd = open(_http_request._path.c_str(), O_RDONLY);
-            if(_http_response._fd >= 0){ //打开文件成功再构建
-                //构建状态行
-                _http_response._status_line = HTTP_VERSION;
-                _http_response._status_line += " ";
-                _http_response._status_line += std::to_string(_http_response._status_code);
-                _http_response._status_line += " ";
-                _http_response._status_line += CodeToDesc(_http_response._status_code);
-                _http_response._status_line += LINE_END;
-                //构建响应报头
-                std::string content_type = "Content-Type: ";
-                content_type += SuffixToDesc(_http_response._suffix);
-                content_type += LINE_END;
-                _http_response._response_header.push_back(content_type);
-
-                std::string content_length = "Content-Length: ";
-                content_length += std::to_string(_http_response._size);
-                content_length += LINE_END;
-                _http_response._response_header.push_back(content_length);
-                return OK;
-            }
-            return 404;
-        }
         //CGI处理
         int ProcessCgi()
         {
+            int code = OK;
+
             auto& bin = _http_request._path; //要让子进程执行的目标程序
             auto& method = _http_request._method;
             //父进程的数据
             auto& query_string = _http_request._query_string; //GET
             auto& request_body = _http_request._request_body; //POST
             int content_length = _http_request._content_length;
+            auto& response_body = _http_response._response_body;
 
             //站在父进程角度
             int input[2];
             int output[2];
             if(pipe(input) < 0){
                 LOG(ERROR, "pipe input error!");
-                return 404;
+                code = 404;
+                return code;
             }
             if(pipe(output) < 0){
                 LOG(ERROR, "pipe output error!");
-                return 404;
+                code = 404;
+                return code;
             }
 
             pid_t pid = fork();
@@ -279,7 +259,8 @@ class EndPoint{
             }
             else if(pid < 0){
                 LOG(ERROR, "fork error!");
-                return 404;
+                code = 404;
+                return code;
             }
             else{ //father
                 close(input[1]);
@@ -294,14 +275,114 @@ class EndPoint{
                 }
                 //std::string test_string = "2021dragon";
                 //send(output[1], test_string.c_str(), test_string.size(), 0);
+                
+                char ch = 0;
+                while(read(input[0], &ch, 1) > 0){
+                    response_body.push_back(ch);
+                } //不会一直读，当另一端关闭后会继续执行下面的代码
 
-                waitpid(pid, nullptr, 0);
+                int status = 0;
+                pid_t ret = waitpid(pid, &status, 0);
+                if(ret == pid){
+                    if(WIFEXITED(status)){ //正常退出
+                        if(WEXITSTATUS(status) == 0){ //结果正确
+                            code = OK;
+                        }
+                        else{
+                            code = 404;
+                        }
+                    }
+                    else{
+                        code = 404;
+                    }
+                }
 
                 //释放文件描述符
                 close(input[0]);
                 close(output[1]);
             }
-            return OK;
+            return code;
+        }
+        //非CGI处理
+        int ProcessNonCgi()
+        {
+            //打开待发送的文件
+            _http_response._fd = open(_http_request._path.c_str(), O_RDONLY);
+            if(_http_response._fd >= 0){ //打开文件成功再构建
+                return OK;
+            }
+            return 404;
+        }
+        void BuildOkResponse()
+        {
+            //构建响应报头
+            std::string content_type = "Content-Type: ";
+            content_type += SuffixToDesc(_http_response._suffix);
+            content_type += LINE_END;
+            _http_response._response_header.push_back(content_type);
+
+            std::string content_length = "Content-Length: ";
+            if(_http_request._cgi){ //以CGI方式请求
+                content_length += std::to_string(_http_response._response_body.size());
+            }
+            else{ //以非CGI方式请求
+                content_length += std::to_string(_http_response._size);
+            }
+            content_length += LINE_END;
+            _http_response._response_header.push_back(content_length);
+        }
+        void HandlerError(std::string page)
+        {
+            _http_request._cgi = false; //正常的网页返回，非CGI返回
+            _http_response._fd = open(page.c_str(), O_RDONLY);
+            std::cout<<page.c_str()<<std::endl;
+            if(_http_response._fd > 0){
+                std::cout<<page.c_str()<<std::endl;
+                //构建响应报头
+                struct stat st;
+                stat(page.c_str(), &st);
+                std::string content_type = "Content-Type: text/html";
+                content_type += LINE_END;
+                _http_response._response_header.push_back(content_type);
+
+                std::string content_length = "Content-Length: ";
+                content_length += std::to_string(st.st_size);
+                content_length += LINE_END;
+                _http_response._response_header.push_back(content_length);
+
+                _http_response._size = st.st_size;
+            }
+        }
+        void BuildHttpResponseHelp()
+        {
+            int code = _http_response._status_code;
+            //构建状态行
+            auto& status_line = _http_response._status_line;
+            status_line += HTTP_VERSION;
+            status_line += " ";
+            status_line += std::to_string(code);
+            status_line += " ";
+            status_line += CodeToDesc(code);
+            status_line += LINE_END;
+
+            //构建响应正文，可能包括响应报头
+            std::string path = WEB_ROOT;
+            path += "/";
+            switch(code){
+                case 200:
+                    BuildOkResponse();
+                    break;
+                case 404:
+                    path += PAGE_404;
+                    HandlerError(path);
+                    break;
+                case 500:
+                    path += PAGE_500;
+                    HandlerError(path);
+                    break;
+                default:
+                    break;
+            }
         }
     public:
         EndPoint(int sock)
@@ -323,6 +404,7 @@ class EndPoint{
             std::string path;
             struct stat st;
             size_t pos = 0;
+
             if(_http_request._method != "GET"&&_http_request._method != "POST"){
                 //非法请求
                 LOG(WARNING, "method is not right");
@@ -354,6 +436,7 @@ class EndPoint{
                 _http_request._path += HOME_PAGE;
             }
             
+            std::cout<<"debug: "<<_http_request._path.c_str()<<std::endl;
             if(stat(_http_request._path.c_str(), &st) == 0){
                 //资源存在
                 if(S_ISDIR(st.st_mode)){ //是一个目录，并且不会以/结尾，因为前面已经处理过了
@@ -387,11 +470,8 @@ class EndPoint{
             else{
                 code = ProcessNonCgi(); //简单的网页返回，返回静态网页
             }
-
 END:
-            if(code != OK){
-
-            }
+            BuildHttpResponseHelp();
         }
         //发送响应
         void SendHttpResponse()
@@ -405,9 +485,20 @@ END:
             //发送空行
             send(_sock, _http_response._blank.c_str(), _http_response._blank.size(), 0);
             //发送响应正文
-            sendfile(_sock, _http_response._fd, nullptr, _http_response._size);
-            //关闭文件
-            close(_http_response._fd);
+            if(_http_request._cgi){
+                auto& response_body = _http_response._response_body;
+                const char* start = response_body.c_str();
+                size_t size = 0;
+                size_t total = 0;
+                while(total < response_body.size()&&(size = send(_sock, start + total, response_body.size() - total, 0)) > 0){
+                    total += size;
+                }
+            }
+            else{
+                sendfile(_sock, _http_response._fd, nullptr, _http_response._size);
+                //关闭文件
+                close(_http_response._fd);
+            }
         }
         ~EndPoint()
         {}
