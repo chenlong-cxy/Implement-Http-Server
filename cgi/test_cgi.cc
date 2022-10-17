@@ -61,6 +61,18 @@ int main()
     std::cout<<name1<<":"<<value1<<std::endl;
     std::cout<<name2<<":"<<value2<<std::endl;
 
+    //处理数据
+    int x = atoi(value1.c_str());
+    int y = atoi(value2.c_str());
+    std::cout<<"<html>";
+    std::cout<<"<head><meta charset=\"UTF-8\"></head>";
+    std::cout<<"<body>";
+    std::cout<<"<h3>"<<x<<"+"<<y<<"="<<x+y<<"</h3>";
+    std::cout<<"<h3>"<<x<<"-"<<y<<"="<<x-y<<"</h3>";
+    std::cout<<"<h3>"<<x<<"*"<<y<<"="<<x*y<<"</h3>";
+    std::cout<<"<h3>"<<x<<"/"<<y<<"="<<x/y<<"</h3>"; //除0后cgi程序崩溃，属于正常退出
+    std::cout<<"</body>";
+    std::cout<<"</html>";
     return 0;
 }
 

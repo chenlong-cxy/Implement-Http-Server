@@ -1,7 +1,7 @@
 bin=httpserver
 cgi=test_cgi
 cc=g++
-LD_FLAGS=-std=c++11 -lpthread
+LD_FLAGS=-std=c++11 -lpthread #-DDEBUG=1
 curr=$(shell pwd)
 src=main.cc
 

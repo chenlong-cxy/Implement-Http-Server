@@ -25,7 +25,6 @@
 #define PAGE_400 "400.html"
 #define PAGE_404 "404.html"
 #define PAGE_500 "500.html"
-//#define DEBUG 1
 
 #define OK 200
 #define BAD_REQUEST 400
@@ -297,14 +296,18 @@ class EndPoint{
                 pid_t ret = waitpid(pid, &status, 0);
                 if(ret == pid){
                     if(WIFEXITED(status)){ //正常退出
+                        LOG(INFO, "正常退出");
                         if(WEXITSTATUS(status) == 0){ //结果正确
+                            LOG(INFO, "正常退出，结果正确");
                             code = OK;
                         }
                         else{
+                            LOG(INFO, "正常退出，结果不正确");
                             code = BAD_REQUEST;
                         }
                     }
                     else{
+                        LOG(INFO, "异常退出");
                         code = SERVER_ERROR;
                     }
                 }
@@ -525,13 +528,17 @@ END:
         {}
 };
 
-class Entrance{
+class CallBack{
     public:
-        static void* HandlerRequest(void* arg)
+        CallBack()
+        {}
+        void operator()(int sock)
+        {
+            HandlerRequest(sock);
+        }
+        void HandlerRequest(int sock)
         {
             LOG(INFO, "handler request begin");
-            int sock = *(int*)arg;
-            delete (int*)arg;
             std::cout<<"get a new link..."<<sock<<std::endl;
 
 #ifdef DEBUG
@@ -556,6 +563,7 @@ class Entrance{
             delete ep;
 #endif
             LOG(INFO, "handler request end");
-            return nullptr;
         }
+        ~CallBack()
+        {}
 };
