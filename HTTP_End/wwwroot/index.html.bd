@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+    </head>
+    <body>
+        <form action="/test_cgi" method="POST">
+            data_x:
+            <input type="text" name="data_x" value="0">
+            <br>
+            data_y:
+            <input type="text" name="data_y" value="0">
+            <br><br>
+            <input type="submit" value="提交">
+        </form> 
+        <button type="button" onclick="alert('Hello World!')">点击我！</button>
+        <p>如果您点击提交，表单数据会提交给test_cgi进行后台数据处理！</p>
+    </body>
+</html>
+
