@@ -403,7 +403,104 @@ class EndPoint{
                 _http_response._size = st.st_size; //重新设置响应文件的大小
             }
         }
-        void BuildHttpResponseHelper()
+    public:
+        EndPoint(int sock)
+            :_sock(sock)
+            ,_stop(false)
+        {}
+        //本次处理是否停止
+        bool IsStop()
+        {
+            return _stop;
+        }
+        //读取请求
+        void RecvHttpRequest()
+        {
+            if(!RecvHttpRequestLine()&&!RecvHttpRequestHeader()){ //短路求值
+                ParseHttpRequestLine();
+                ParseHttpRequestHeader();
+                RecvHttpRequestBody();
+            }
+        }
+        //处理请求
+        void HandlerHttpRequest()
+        {
+            auto& code = _http_response._status_code;
+
+            if(_http_request._method != "GET"&&_http_request._method != "POST"){ //非法请求
+                LOG(WARNING, "method is not right");
+                code = BAD_REQUEST; //设置对应的状态码，并直接返回
+                return;
+            }
+
+            if(_http_request._method == "GET"){
+                size_t pos = _http_request._uri.find('?');
+                if(pos != std::string::npos){ //uri中携带参数
+                    //切割uri，得到客户端请求资源的路径和uri中携带的参数
+                    Util::CutString(_http_request._uri, _http_request._path, _http_request._query_string, "?");
+                    _http_request._cgi = true; //上传了参数，需要使用CGI模式
+                }
+                else{ //uri中没有携带参数
+                    _http_request._path = _http_request._uri; //uri即是客户端请求资源的路径
+                }
+            }
+            else if(_http_request._method == "POST"){
+                _http_request._path = _http_request._uri; //uri即是客户端请求资源的路径
+                _http_request._cgi = true; //上传了参数，需要使用CGI模式
+            }
+            else{
+                //Do Nothing
+            }
+
+            //给请求资源路径拼接web根目录
+            std::string path = _http_request._path;
+            _http_request._path = WEB_ROOT;
+            _http_request._path += path;
+
+            //请求资源路径以/结尾，说明请求的是一个目录
+            if(_http_request._path[_http_request._path.size() - 1] == '/'){
+                //拼接上该目录下的index.html
+                _http_request._path += HOME_PAGE;
+            }
+            
+            //获取请求资源文件的属性信息
+            struct stat st;
+            if(stat(_http_request._path.c_str(), &st) == 0){ //属性信息获取成功，说明该资源存在
+                if(S_ISDIR(st.st_mode)){ //该资源是一个目录
+                    _http_request._path += "/"; //需要拼接/，以/结尾的目录前面已经处理过了
+                    _http_request._path += HOME_PAGE; //拼接上该目录下的index.html
+                    stat(_http_request._path.c_str(), &st); //需要重新资源文件的属性信息
+                }
+                else if(st.st_mode&S_IXUSR||st.st_mode&S_IXGRP||st.st_mode&S_IXOTH){ //该资源是一个可执行程序
+                    _http_request._cgi = true; //需要使用CGI模式
+                }
+                _http_response._size = st.st_size; //设置请求资源文件的大小
+            }
+            else{ //属性信息获取失败，可以认为该资源不存在
+                LOG(WARNING, _http_request._path + " NOT_FOUND");
+                code = NOT_FOUND; //设置对应的状态码，并直接返回
+                return;
+            }
+
+            //获取请求资源文件的后缀
+            size_t pos = _http_request._path.rfind('.');
+            if(pos == std::string::npos){
+                _http_response._suffix = ".html"; //默认设置
+            }
+            else{
+                _http_response._suffix = _http_request._path.substr(pos);
+            }
+
+            //进行CGI或非CGI处理
+            if(_http_request._cgi == true){
+                code = ProcessCgi(); //以CGI的方式进行处理
+            }
+            else{
+                code = ProcessNonCgi(); //简单的网页返回，返回静态网页
+            }
+        }
+        //构建响应
+        void BuildHttpResponse()
         {
             int code = _http_response._status_code;
             //构建状态行
@@ -437,108 +534,6 @@ class EndPoint{
                 default:
                     break;
             }
-        }
-    public:
-        EndPoint(int sock)
-            :_sock(sock)
-            ,_stop(false)
-        {}
-        //本次处理是否停止
-        bool IsStop()
-        {
-            return _stop;
-        }
-        //读取请求
-        void RecvHttpRequest()
-        {
-            if(!RecvHttpRequestLine()&&!RecvHttpRequestHeader()){ //短路求值
-                ParseHttpRequestLine();
-                ParseHttpRequestHeader();
-                RecvHttpRequestBody();
-            }
-        }
-        //构建响应
-        void BuildHttpResponse()
-        {
-            //后续需要使用的一些变量（定义在goto语句之前）
-            auto& code = _http_response._status_code;
-            std::string path;
-            struct stat st;
-            size_t pos = 0;
-
-            if(_http_request._method != "GET"&&_http_request._method != "POST"){ //非法请求
-                LOG(WARNING, "method is not right");
-                code = BAD_REQUEST; //设置对应的状态码，并直接构建响应
-                goto END;
-            }
-
-            if(_http_request._method == "GET"){
-                size_t pos = _http_request._uri.find('?');
-                if(pos != std::string::npos){ //uri中携带参数
-                    //切割uri，得到客户端请求资源的路径和uri中携带的参数
-                    Util::CutString(_http_request._uri, _http_request._path, _http_request._query_string, "?");
-                    _http_request._cgi = true; //上传了参数，需要使用CGI模式
-                }
-                else{ //uri中没有携带参数
-                    _http_request._path = _http_request._uri; //uri即是客户端请求资源的路径
-                }
-            }
-            else if(_http_request._method == "POST"){
-                _http_request._path = _http_request._uri; //uri即是客户端请求资源的路径
-                _http_request._cgi = true; //上传了参数，需要使用CGI模式
-            }
-            else{
-                //Do Nothing
-            }
-
-            //给请求资源路径拼接web根目录
-            path = _http_request._path;
-            _http_request._path = WEB_ROOT;
-            _http_request._path += path;
-
-            //请求资源路径以/结尾，说明请求的是一个目录
-            if(_http_request._path[_http_request._path.size() - 1] == '/'){
-                //拼接上该目录下的index.html
-                _http_request._path += HOME_PAGE;
-            }
-            
-            //获取请求资源文件的属性信息
-            if(stat(_http_request._path.c_str(), &st) == 0){ //属性信息获取成功，说明该资源存在
-                if(S_ISDIR(st.st_mode)){ //该资源是一个目录
-                    _http_request._path += "/"; //需要拼接/，以/结尾的目录前面已经处理过了
-                    _http_request._path += HOME_PAGE; //拼接上该目录下的index.html
-                    stat(_http_request._path.c_str(), &st); //需要重新资源文件的属性信息
-                }
-                else if(st.st_mode&S_IXUSR||st.st_mode&S_IXGRP||st.st_mode&S_IXOTH){ //该资源是一个可执行程序
-                    _http_request._cgi = true; //需要使用CGI模式
-                }
-                _http_response._size = st.st_size; //设置请求资源文件的大小
-            }
-            else{ //属性信息获取失败，可以认为该资源不存在
-                LOG(WARNING, _http_request._path + " NOT_FOUND");
-                code = NOT_FOUND; //设置对应的状态码，并直接构建响应
-                goto END;
-            }
-
-            //获取请求资源文件的后缀
-            pos = _http_request._path.rfind('.');
-            if(pos == std::string::npos){
-                _http_response._suffix = ".html"; //默认设置
-            }
-            else{
-                _http_response._suffix = _http_request._path.substr(pos);
-            }
-
-            //进行CGI或非CGI处理
-            if(_http_request._cgi == true){
-                code = ProcessCgi(); //以CGI的方式进行处理
-            }
-            else{
-                code = ProcessNonCgi(); //简单的网页返回，返回静态网页
-            }
-END:
-            //构建响应
-            BuildHttpResponseHelper();
         }
 
         //发送响应
@@ -607,15 +602,16 @@ class CallBack{
             EndPoint* ep = new EndPoint(sock);
             ep->RecvHttpRequest(); //读取请求
             if(!ep->IsStop()){
-                LOG(INFO, "Recv No Error, Begin Build And Send");
-                ep->BuildHttpResponse(); //构建响应
-                ep->SendHttpResponse();  //发送响应
+                LOG(INFO, "Recv No Error, Begin Handler Request");
+                ep->HandlerHttpRequest(); //处理请求
+                ep->BuildHttpResponse();  //构建响应
+                ep->SendHttpResponse();   //发送响应
                 if(ep->IsStop()){
-                    LOG(WARNING, "Send Error, Stop Send");
+                    LOG(WARNING, "Send Error, Stop Send Response");
                 }
             }
             else{
-                LOG(WARNING, "Recv Error, Stop Build And Send");
+                LOG(WARNING, "Recv Error, Stop Handler Request");
             }
 
             close(sock); //关闭与该客户端建立的套接字
