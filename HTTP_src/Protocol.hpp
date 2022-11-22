@@ -326,7 +326,7 @@ class EndPoint{
             if(_http_response._fd >= 0){ //打开文件成功再构建
                 return OK;
             }
-            return NOT_FOUND;
+            return SERVER_ERROR;
         }
         void BuildOkResponse()
         {
