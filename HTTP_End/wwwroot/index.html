@@ -4,34 +4,15 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <style>
-        .box{
-            width: 400px;
-            height: 400px;
-            margin: 40px auto;
-            background-color: #2b92d4;
-            border-radius: 50%; /*圆角效果*/
-            box-shadow: 0 1px 2px rgba(0, 0, 0, .3); /*阴影效果*/
-            animation: breathe 2700ms ease-in-out infinite alternate;
-        }
-        @keyframes breathe {
-            0%{
-                opacity: 0.2; /*透明度*/
-                box-shadow: 0 1px 2px rgba(255, 255, 255, 0.1);
-            }
-            50%{
-                opacity: 0.5; /*透明度*/
-                box-shadow: 0 1px 2px rgba(18, 190, 84, 0.76);
-            }
-            100%{
-                opacity: 1; /*透明度*/
-                box-shadow: 0 1px 30px rgba(59, 255, 255, 1);
-            }
-        }
-    </style>
+    <title>简易的在线计算器</title>
 </head>
 <body>
-    <div class="box"></div>
+    <form action="/test_cgi" method="post" align="center">
+        操作数1：<br>
+        <input type="text" name="x"><br>
+        操作数2：<br>
+        <input type="text" name="y"><br><br>
+        <input type="submit" value="计算">
+    </form>
 </body>
 </html>

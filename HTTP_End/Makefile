@@ -19,4 +19,4 @@ output:
 	mkdir -p output
 	cp $(bin) output
 	cp -rf wwwroot output
-	cp -rf cgi/* output/wwwroot
+	cp -rf cgi/test_cgi output/wwwroot
